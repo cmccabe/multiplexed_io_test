@@ -117,6 +117,7 @@ public class MultiplexedTest { //extends Configured {
     public final int nThreads;
     public final long nBytesPerThread;
     public final String uri;
+    public final int bufferSize;
 
     public Options() {
       String op = getStringOrDie("muxtest.operation");
@@ -131,6 +132,7 @@ public class MultiplexedTest { //extends Configured {
       long totalMegs = getIntOrDie("muxtest.total.megs");
       this.nBytesPerThread = (totalMegs * 1024 * 1024) / this.nThreads;
       this.uri = getStringOrDie("muxtest.hdfs.uri");
+      this.bufferSize = getIntWithDefault("muxtest.buffer.size", 1024 * 1024);
     }
   };
 
@@ -174,6 +176,7 @@ public class MultiplexedTest { //extends Configured {
           }
         }
       } catch (Throwable t) {
+        t.printStackTrace(System.err);
         this.exception = t;
       }
     }
@@ -186,7 +189,6 @@ public class MultiplexedTest { //extends Configured {
   static private class WriterThread extends BaseThread {
     private final FSDataOutputStream fos;
     private final byte[] buffer;
-    private final static int BUFFER_SIZE = 1024 * 1024;
 
     public static WriterThread create(int idx, FileSystem fs) throws IOException {
       boolean shouldPrint = (idx == 0);
@@ -210,7 +212,7 @@ public class MultiplexedTest { //extends Configured {
     WriterThread(boolean shouldPrint, FSDataOutputStream fos, long remaining) {
       super(shouldPrint, remaining);
       this.fos = fos;
-      this.buffer = new byte[BUFFER_SIZE];
+      this.buffer = new byte[options.bufferSize];
       for (int i = 0; i < this.buffer.length; i++) {
         this.buffer[i] = (byte)0;
       }
@@ -230,9 +232,9 @@ public class MultiplexedTest { //extends Configured {
   }
 
   static private class ReaderThread extends BaseThread {
+    private final int threadIdx;
     private final FSDataInputStream fis;
     private final byte[] buffer;
-    private final static int BUFFER_SIZE = 1024 * 1024;
 
     public static ReaderThread create(int idx, FileSystem fs) throws IOException {
       boolean shouldPrint = (idx == 0);
@@ -243,7 +245,7 @@ public class MultiplexedTest { //extends Configured {
       FSDataInputStream fis = fs.open(new Path(fileName));
       ReaderThread ret = null;
       try {
-        ret = new ReaderThread(shouldPrint, fis, options.nBytesPerThread);
+        ret = new ReaderThread(idx, shouldPrint, fis, options.nBytesPerThread);
         fis = null;
       } finally {
         if (fis != null) {
@@ -253,10 +255,12 @@ public class MultiplexedTest { //extends Configured {
       return ret;
     }
 
-    ReaderThread(boolean shouldPrint, FSDataInputStream fis, long remaining) {
+    ReaderThread(int threadIdx, boolean shouldPrint,
+        FSDataInputStream fis, long remaining) {
       super(shouldPrint, remaining);
+      this.threadIdx = threadIdx;
       this.fis = fis;
-      this.buffer = new byte[BUFFER_SIZE];
+      this.buffer = new byte[options.bufferSize];
     }
 
     @Override
@@ -268,8 +272,9 @@ public class MultiplexedTest { //extends Configured {
         needed = (int)remaining;
       }
       int ret = fis.read(this.buffer, 0, needed);
-      if (ret != -1) {
-        throw new RuntimeException("got unexpected EOF after reading " + 
+      if (ret == -1) {
+        throw new RuntimeException("thread " + threadIdx +
+            ": got unexpected EOF after reading " + 
             (options.nBytesPerThread - remaining) + " bytes!");
       }
       remaining -= ret;

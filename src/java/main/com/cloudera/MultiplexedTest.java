@@ -68,6 +68,7 @@ public class MultiplexedTest { //extends Configured {
         "                                   read or write muxtest.total.bytes / muxtest.nthreads\n" +
         "                                   bytes.\n" +
         "muxtest.hdfs.uri [uri]             The HDFS URI to talk to.\n" +
+        "muxtest.buffer.size [bytes]        Buffer size to use for reads/writes, in bytes.\n" +
         "\n" +
         "A few notes about configuration:\n" +
         "If you want to be sure that your reads hit the disk, you need to set\n" +
